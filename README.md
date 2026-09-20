@@ -85,9 +85,11 @@ test/             Unit tests for src/codex.ts
 
 To try a different model, change `MODEL` in `src/llm.ts`.
 
-## What I would build next
+## Screenshots
 
-- Human approval for waivers with `waitForApproval` in a second workflow, so exceptions expire and need a reviewer.
-- Expose reviews as an **MCP server** so editors and other agents can call `review_file` directly.
-- An eval set of files with known findings to track model accuracy per rule.
-- Run the same checks as a CI job that comments on pull requests.
+<img width="1440" height="858" alt="Screenshot 2026-09-20 at 6 03 26 PM" src="https://github.com/user-attachments/assets/eed0b48c-2429-4ad6-b2b6-9635c5edf3b4" />
+
+<img width="1440" height="858" alt="Screenshot 2026-09-20 at 6 03 36 PM" src="https://github.com/user-attachments/assets/3ba40374-fdde-461e-9cad-158cf57c12e8" />
+
+<img width="1440" height="812" alt="Screenshot 2026-09-20 at 8 23 42 PM" src="https://github.com/user-attachments/assets/9b3dbe88-d17b-491d-ac85-9104a3e63d43" />
+
