@@ -1,4 +1,5 @@
-# Codex Guard
+<img width="960" height="360" alt="hero" src="https://github.com/user-attachments/assets/52106fc9-ba54-4348-891c-dc740a939c9b" />
+
 
 An AI-powered app on Cloudflare that checks code and config against a team's **engineering standards** (a small, illustrative "codex") and answers questions about them in chat.
 
