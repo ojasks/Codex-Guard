@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Codex Guard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #edf0f3;
+    --panel: #ffffff;
+    --ink: #0e1a2b;
+    --ink-2: #4a5a6e;
+    --rule: #d3dae1;
+    --signal: #f38020;
+    --pass: #0f7b62;
+    --fail: #c0392b;
+    --review: #9a6200;
+    --waived: #5c6b7d;
+    --sans: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 400 15px/1.5 var(--sans); }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+  header.bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; background: var(--ink); color: #fff; }
+  .brand { font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+  .brand small { font-weight: 400; font-size: 13px; color: #a9b7c8; margin-left: 12px; }
+  .conn { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #a9b7c8; }
+  .conn i { width: 8px; height: 8px; border-radius: 50%; background: #6b7a8d; }
+  .conn.ok i { background: #3ccf9e; }
+  .conn.bad i { background: var(--signal); }
+
+  main { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 24px; max-width: 1240px; margin: 0 auto; padding: 24px; align-items: start; }
+  @media (max-width: 920px) { main { grid-template-columns: minmax(0, 1fr); padding: 16px; } header.bar { padding: 12px 16px; } .brand small { display: none; } }
+
+  section.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 24px; }
+  section.panel + section.panel { margin-top: 24px; }
+  h2 { margin: 0 0 4px; font-size: 20px; letter-spacing: -0.01em; }
+  h3 { margin: 0 0 8px; font-size: 15px; }
+  .lede { margin: 0 0 16px; color: var(--ink-2); max-width: 62ch; }
+
+  .row { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  input[type=text], select, textarea { width: 100%; border: 1px solid var(--rule); border-radius: 6px; background: #fff; padding: 9px 12px; }
+  input[type=text], select { height: 40px; }
+  textarea { min-height: 220px; resize: vertical; font-family: var(--mono); font-size: 13px; line-height: 1.55; tab-size: 2; }
+  .grow { flex: 1 1 200px; }
+
+  button { border: 1px solid var(--rule); background: #fff; border-radius: 6px; padding: 0 16px; height: 40px; cursor: pointer; font-weight: 600; }
+  button:hover:not(:disabled) { border-color: var(--ink-2); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: var(--signal); border-color: var(--signal); color: #1c0d00; }
+  button.primary:hover:not(:disabled) { background: #ff9139; border-color: #ff9139; }
+  button.link { border: 0; background: none; height: auto; padding: 0; color: var(--ink-2); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+  button.small { height: 32px; padding: 0 12px; font-size: 13px; }
+
+  /* workflow rail: mirrors the steps of ReviewWorkflow */
+  .rail { list-style: none; margin: 20px 0 0; padding: 0; }
+  .rail li { position: relative; padding: 0 0 14px 28px; border-left: 2px solid var(--rule); margin-left: 6px; min-height: 40px; }
+  .rail li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .rail li::before { content: ""; position: absolute; left: -7px; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--panel); border: 2px solid var(--rule); }
+  .rail li.complete { border-left-color: var(--signal); }
+  .rail li.complete::before { background: var(--signal); border-color: var(--signal); }
+  .rail li.running::before { border-color: var(--signal); background: #fff; box-shadow: 0 0 0 4px rgba(243,128,32,.22); }
+  .rail li.error::before { background: var(--fail); border-color: var(--fail); }
+  .rail .name { font-weight: 600; }
+  .rail .msg { display: block; color: var(--ink-2); font-size: 13px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .rail li.running::before { animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(243,128,32,.08); } }
+  }
+
+  /* report */
+  .verdict { display: flex; gap: 20px; align-items: baseline; flex-wrap: wrap; margin: 4px 0 16px; }
+  .score { font: 500 34px/1 var(--mono); letter-spacing: -0.03em; }
+  .score span { font-size: 15px; color: var(--ink-2); }
+  .summary { margin: 0; max-width: 62ch; }
+  .file { font-family: var(--mono); font-size: 13px; color: var(--ink-2); }
+  .ledger { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+  .ledger > li { padding: 16px 0 16px 16px; border-bottom: 1px solid var(--rule); border-left: 4px solid var(--rule); }
+  .ledger > li.fail { border-left-color: var(--fail); }
+  .ledger > li.review { border-left-color: var(--review); }
+  .ledger > li.waived { border-left-color: var(--waived); }
+  .ledger > li.pass { border-left-color: var(--pass); }
+  .ledger .head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  .status { font-weight: 700; }
+  .fail .status { color: var(--fail); } .review .status { color: var(--review); } .waived .status { color: var(--waived); } .pass .status { color: var(--pass); }
+  .rid { font: 400 12px var(--mono); color: var(--ink-2); }
+  .ledger p { margin: 6px 0 0; max-width: 66ch; }
+  .fixline b { font-weight: 600; }
+  pre.ev { margin: 10px 0 0; padding: 10px 12px; background: #f5f7f9; border: 1px solid var(--rule); border-radius: 6px; font: 400 12.5px/1.6 var(--mono); overflow-x: auto; white-space: pre; }
+  pre.ev b { color: var(--ink-2); font-weight: 400; display: inline-block; min-width: 3ch; margin-right: 12px; text-align: right; user-select: none; }
+  form.waive { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  form.waive input { flex: 1 1 220px; height: 32px; }
+  details.passed { margin-top: 16px; }
+  details.passed summary { cursor: pointer; font-weight: 600; }
+  .empty { color: var(--ink-2); margin: 0; }
+
+  /* chat */
+  .profile { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .waivers { margin: 0 0 16px; padding: 0; list-style: none; font-size: 13px; }
+  .waivers li { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--rule); }
+  .log { height: 360px; overflow-y: auto; border: 1px solid var(--rule); border-radius: 8px; padding: 12px; background: #f8fafb; display: flex; flex-direction: column; gap: 12px; }
+  .msg-u, .msg-a { max-width: 92%; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg-u { align-self: flex-end; background: var(--ink); color: #fff; padding: 8px 12px; border-radius: 10px 10px 2px 10px; }
+  .msg-a { align-self: flex-start; background: #fff; border: 1px solid var(--rule); padding: 8px 12px; border-radius: 10px 10px 10px 2px; }
+  .msg-a pre { white-space: pre; overflow-x: auto; background: #f0f3f6; padding: 8px 10px; border-radius: 6px; margin: 8px 0; font: 400 12.5px/1.55 var(--mono); }
+  .msg-a code { font-family: var(--mono); font-size: 12.5px; background: #f0f3f6; padding: 1px 4px; border-radius: 4px; }
+  .msg-a pre code { background: none; padding: 0; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .chips[hidden] { display: none; }
+  .chips button { height: 32px; font-weight: 500; font-size: 13px; border-radius: 999px; }
+  form.send { display: flex; gap: 8px; margin-top: 12px; }
+  form.send input { flex: 1; }
+  .foot { display: flex; justify-content: space-between; margin-top: 12px; font-size: 13px; color: var(--ink-2); }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--fail); color: #fff; padding: 10px 16px; border-radius: 8px; max-width: 90vw; display: none; }
+  #toast.show { display: block; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand">Codex Guard<small>Engineering standards, checked automatically</small></div>
+  <div class="conn" id="conn" role="status"><i></i><span id="connText">Connecting</span></div>
+</header>
+
+<main>
+  <div>
+    <section class="panel" aria-labelledby="review-h">
+      <h2 id="review-h">Review a file</h2>
+      <p class="lede">Paste a Dockerfile, CI workflow, Kubernetes manifest, or TypeScript, Go or shell code. Each review runs as a durable workflow that checks the file against the codex.</p>
+
+      <div class="row">
+        <div class="grow">
+          <label for="filename">File name</label>
+          <input type="text" id="filename" value="Dockerfile" maxlength="120" autocomplete="off">
+        </div>
+        <div style="flex: 0 1 220px">
+          <label for="sample">Load a sample</label>
+          <select id="sample">
+            <option value="">Choose…</option>
+            <option value="docker">Dockerfile</option>
+            <option value="ci">GitHub Actions workflow</option>
+            <option value="ts">TypeScript Worker</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top: 12px">
+        <label for="code">Code or config</label>
+        <textarea id="code" spellcheck="false" placeholder="Paste something to review (up to 12,000 characters)"></textarea>
+      </div>
+      <div class="row" style="margin-top: 12px">
+        <button class="primary" id="run" disabled>Run review</button>
+        <span class="file" id="runHint"></span>
+      </div>
+
+      <ol class="rail" id="rail" hidden aria-live="polite"></ol>
+    </section>
+
+    <section class="panel" id="reportPanel" aria-live="polite">
+      <h2>Latest report</h2>
+      <p class="empty">No reviews yet. Load a sample and run your first review.</p>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="chat-h">
+    <h2 id="chat-h">Ask about the codex</h2>
+    <p class="lede">The assistant knows your team, your waivers and your recent reviews.</p>
+
+    <div class="profile">
+      <div><label for="team">Team</label><input type="text" id="team" placeholder="Developer Productivity" maxlength="80" autocomplete="off"></div>
+      <div><label for="stack">Stack</label><input type="text" id="stack" placeholder="TypeScript, Go" maxlength="120" autocomplete="off"></div>
+    </div>
+
+    <h3>Waivers</h3>
+    <ul class="waivers" id="waivers"></ul>
+
+    <div class="log" id="log" aria-live="polite"></div>
+    <div class="chips" id="chips">
+      <button type="button" data-q="Why does the codex ban the latest tag on images?">Why ban :latest?</button>
+      <button type="button" data-q="How should I add a timeout to fetch in a Worker?">Timeouts in fetch</button>
+      <button type="button" data-q="Which rules apply to a Kubernetes Deployment?">Rules for Kubernetes</button>
+    </div>
+    <form class="send" id="send">
+      <label class="sr" for="msg">Message</label>
+      <input type="text" id="msg" placeholder="Ask a question" maxlength="4000" autocomplete="off">
+      <button class="primary" type="submit" id="sendBtn" disabled>Send</button>
+    </form>
+    <div class="foot">
+      <span>Room <code id="room"></code></span>
+      <button class="link" id="clear" type="button">Clear history</button>
+    </div>
+  </section>
+</main>
+<div id="toast" role="alert"></div>
+
+<script>
+const SAMPLES = {
+  docker: { name: "Dockerfile", code: `FROM node:latest
+WORKDIR /app
+COPY . .
+ENV API_TOKEN="sk_live_51Hxample0123456789"
+RUN npm install
+EXPOSE 8080
+CMD ["node", "server.js"]
+` },
+  ci: { name: ".github/workflows/ci.yml", code: `name: ci
+on:
+  pull_request_target:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - uses: actions/setup-node@v4
+      - run: npm ci
+      - run: npm run build
+      - run: npx wrangler deploy
+` },
+  ts: { name: "src/worker.ts", code: `export default {
+  async fetch(request: Request, env: Env) {
+    console.log("incoming", request.url);
+    try {
+      const res = await fetch("https://api.example.com/v1/user", {
+        headers: { Authorization: "Bearer " + env.API_TOKEN },
+      });
+      return new Response(await res.text());
+    } catch (e) {}
+    return new Response("upstream error", { status: 502 });
+  },
+};
+` },
+};
+
+// Mirrors the steps of ReviewWorkflow (src/workflow.ts)
+const STEPS = [
+  ["classify", "Detect file type"],
+  ["select-rules", "Pick applicable rules"],
+  ["policy-checks", "Run policy checks"],
+  ["evaluate", "Evaluate rules with Llama 3.3"],
+  ["summarize", "Write summary"],
+];
+const STATUS_LABEL = { fail: "Failed", review: "Needs review", waived: "Waived", pass: "Passed" };
+const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 };
+const STATUS_ORDER = { fail: 0, review: 1, waived: 2, pass: 3 };
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// One room per browser. The room id is the key to this user's memory (a Durable Object).
+const params = new URLSearchParams(location.search);
+let room = params.get("room") || localStorage.getItem("codex-guard-room");
+if (!room) room = Math.random().toString(36).slice(2, 10);
+localStorage.setItem("codex-guard-room", room);
+$("room").textContent = room;
+
+let ws, retry = 0, agentState = null, streamNode = null, streamText = "", generating = false;
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/agents/codex-agent/${encodeURIComponent(room)}`);
+  ws.onopen = () => { retry = 0; setConn("ok", "Connected"); refreshButtons(); };
+  ws.onclose = () => {
+    setConn("bad", "Reconnecting");
+    generating = false;
+    refreshButtons();
+    setTimeout(connect, Math.min(1000 * 2 ** retry++, 10000));
+  };
+  ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } handle(m); };
+}
+function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+function setConn(cls, text) { $("conn").className = "conn " + cls; $("connText").textContent = text; }
+
+function handle(m) {
+  switch (m.type) {
+    case "cf_agent_state": agentState = m.state; renderState(); break;
+    case "history":
+      $("log").innerHTML = "";
+      m.messages.forEach((x) => addMessage(x.role, x.content));
+      if (m.reviews.length) renderReport(m.reviews[0]); else resetReport();
+      $("chips").hidden = m.messages.length > 0;
+      break;
+    case "chat_user": addMessage("user", m.text); $("chips").hidden = true; break;
+    case "chat_start": generating = true; streamText = ""; streamNode = addMessage("assistant", ""); refreshButtons(); break;
+    case "chat_token": if (streamNode) { streamText += m.token; streamNode.innerHTML = markdown(streamText); scrollLog(); } break;
+    case "chat_end": generating = false; streamNode = null; refreshButtons(); break;
+    case "review_complete": renderReport(m.report); break;
+    case "error": toast(m.message); refreshButtons(); break;
+  }
+}
+
+/* ---------- state: profile, waivers, active workflow ---------- */
+function renderState() {
+  const s = agentState;
+  if (document.activeElement !== $("team")) $("team").value = s.profile.team;
+  if (document.activeElement !== $("stack")) $("stack").value = s.profile.stack;
+
+  $("waivers").innerHTML = s.waivers.length
+    ? s.waivers.map((w) => `<li><span><code>${esc(w.ruleId)}</code> ${esc(w.reason)}</span><button class="link" data-unwaive="${esc(w.ruleId)}">Remove</button></li>`).join("")
+    : `<li><span class="empty">None. Waive a failing rule from a report to record an exception.</span></li>`;
+
+  renderRail();
+  refreshButtons();
+}
+
+function renderRail() {
+  const a = agentState && agentState.active;
+  $("rail").hidden = !a;
+  if (!a) return;
+  const seen = Object.fromEntries(a.steps.map((x) => [x.step, x]));
+  $("rail").innerHTML = STEPS.map(([id, label]) => {
+    const s = seen[id];
+    const cls = s ? s.status : "pending";
+    return `<li class="${cls}"><span class="name">${label}</span>${s && s.message ? `<span class="msg">${esc(s.message)}</span>` : ""}</li>`;
+  }).join("");
+}
+
+/* ---------- report ---------- */
+function resetReport() {
+  $("reportPanel").innerHTML = `<h2>Latest report</h2><p class="empty">No reviews yet. Load a sample and run your first review.</p>`;
+}
+
+function renderReport(r) {
+  const results = [...r.results].sort((a, b) =>
+    STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+  const open = results.filter((x) => x.status !== "pass");
+  const passed = results.filter((x) => x.status === "pass");
+
+  $("reportPanel").innerHTML = `
+    <h2>Latest report</h2>
+    <div class="verdict">
+      <div class="score">${r.score}<span> / 100</span></div>
+      <div class="file">${esc(r.filename)} (${esc(r.kind)})</div>
+    </div>
+    <p class="summary">${esc(r.summary)}</p>
+    <ul class="ledger" style="margin-top:16px">${open.map(row).join("")}</ul>
+    ${passed.length ? `<details class="passed"><summary>${passed.length} rule${passed.length > 1 ? "s" : ""} passed</summary><ul class="ledger" style="margin-top:8px">${passed.map(row).join("")}</ul></details>` : ""}`;
+}
+
+function row(x) {
+  const ev = x.evidence.length
+    ? `<pre class="ev">${x.evidence.slice(0, 5).map((e) => `<b>${e.line}</b>${esc(e.text)}`).join("\n")}</pre>` : "";
+  const action = x.status === "fail" || x.status === "review"
+    ? `<button class="link" data-waive="${esc(x.ruleId)}" style="margin-top:10px">Request a waiver</button>` : "";
+  return `<li class="${x.status}">
+    <div class="head"><span class="status">${STATUS_LABEL[x.status]}</span><strong>${esc(x.title)}</strong><span class="rid">${esc(x.ruleId)} · ${esc(x.severity)}</span></div>
+    ${x.explanation ? `<p>${esc(x.explanation)}</p>` : ""}
+    ${x.fix ? `<p class="fixline"><b>Fix:</b> ${esc(x.fix)}</p>` : ""}
+    ${ev}
+    ${action}
+  </li>`;
+}
+
+/* ---------- chat ---------- */
+function addMessage(role, text) {
+  const d = document.createElement("div");
+  d.className = role === "user" ? "msg-u" : "msg-a";
+  if (role === "user") d.textContent = text; else d.innerHTML = markdown(text);
+  $("log").appendChild(d);
+  scrollLog();
+  return d;
+}
+function scrollLog() { const l = $("log"); l.scrollTop = l.scrollHeight; }
+
+function markdown(text) {
+  const parts = String(text).split(/```(?:[\w-]*)\n?/);
+  return parts.map((p, i) => {
+    if (i % 2 === 1) return `<pre><code>${esc(p.replace(/\n$/, ""))}</code></pre>`;
+    return esc(p).replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  }).join("");
+}
+
+/* ---------- controls ---------- */
+function refreshButtons() {
+  const open = ws && ws.readyState === 1;
+  const busy = !!(agentState && agentState.active);
+  $("run").disabled = !open || busy;
+  $("runHint").textContent = busy ? "A review is running." : "";
+  $("sendBtn").disabled = !open || generating;
+}
+
+let toastTimer;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.className = "show"; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.className = ""), 4000); }
+
+$("sample").addEventListener("change", (e) => {
+  const s = SAMPLES[e.target.value];
+  if (!s) return;
+  $("filename").value = s.name; $("code").value = s.code;
+});
+$("run").addEventListener("click", () => send({ type: "review", filename: $("filename").value, code: $("code").value }));
+$("send").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("msg").value.trim();
+  if (!text || generating) return;
+  send({ type: "chat", text }); $("msg").value = "";
+});
+$("chips").addEventListener("click", (e) => { const q = e.target.dataset && e.target.dataset.q; if (q && !generating) send({ type: "chat", text: q }); });
+["team", "stack"].forEach((id) => $(id).addEventListener("change", () => send({ type: "set_profile", team: $("team").value, stack: $("stack").value })));
+$("clear").addEventListener("click", () => { if (confirm("Delete this room's chat and review history?")) send({ type: "clear_history" }); });
+$("waivers").addEventListener("click", (e) => { const id = e.target.dataset && e.target.dataset.unwaive; if (id) send({ type: "unwaive", ruleId: id }); });
+
+// Inline waiver form under a finding
+$("reportPanel").addEventListener("click", (e) => {
+  const btn = e.target;
+  const id = btn.dataset && btn.dataset.waive;
+  if (!id) return;
+  const li = btn.closest("li");
+  btn.hidden = true;
+  const f = document.createElement("form");
+  f.className = "waive";
+  f.innerHTML = `<label class="sr" for="why-${esc(id)}">Reason</label><input type="text" id="why-${esc(id)}" placeholder="Why is this acceptable?" maxlength="300" autocomplete="off"><button class="small primary" type="submit">Save waiver</button><button class="small" type="button">Cancel</button>`;
+  li.appendChild(f);
+  f.querySelector("input").focus();
+  f.querySelector("button[type=button]").addEventListener("click", () => { f.remove(); btn.hidden = false; });
+  f.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const reason = f.querySelector("input").value.trim();
+    if (!reason) { f.querySelector("input").focus(); return toast("A waiver needs a reason."); }
+    send({ type: "waive", ruleId: id, reason });
+    f.innerHTML = `<span class="empty">Waiver saved. It applies to your next review.</span>`;
+  });
+});
+
+connect();
+</script>
+</body>
+</html>
