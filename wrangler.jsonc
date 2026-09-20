@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "codex-guard",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // LLM: Workers AI (Llama 3.3 70B)
+  "ai": { "binding": "AI" },
+
+  // Chat UI: static files in ./public
+  "assets": { "directory": "./public" },
+
+  // Memory / state + coordination: one Durable Object (Agents SDK) per user "room"
+  "durable_objects": {
+    "bindings": [{ "name": "CodexAgent", "class_name": "CodexAgent" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CodexAgent"] }],
+
+  // Workflow: durable multi-step review pipeline
+  "workflows": [
+    {
+      "name": "codex-review-workflow",
+      "binding": "REVIEW_WORKFLOW",
+      "class_name": "ReviewWorkflow"
+    }
+  ],
+
+  "observability": { "enabled": true }
+}
