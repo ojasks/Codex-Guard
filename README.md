@@ -1,89 +1,103 @@
 <img width="960" height="360" alt="hero" src="https://github.com/user-attachments/assets/52106fc9-ba54-4348-891c-dc740a939c9b" />
 
 
-An AI-powered app on Cloudflare that checks code and config against a team's **engineering standards** (a small, illustrative "codex") and answers questions about them in chat.
+# Codex Guard
 
-I built it for the Cloudflare Developer Productivity assignment because the role is about turning engineering standards into automated guardrails. Codex Guard is a miniature version of that idea: policy-as-code checks for hard evidence, an LLM for judgment and explanation, and an agent that remembers your team's context and exceptions.
+**Standards nobody reads are just decoration. Codex Guard makes them read your code back.**
+
+Paste a Dockerfile, CI workflow, Kubernetes manifest, or TypeScript / Go / shell file. Get a scored review in seconds, with the exact lines that broke the rules, a fix for each one, and a chat assistant that remembers your team and your exceptions.
+
+Built on Cloudflare **Agents**, **Workflows**, **Durable Objects** and **Workers AI (Llama 3.3)**, for the Developer Productivity assignment. It's a miniature of the job itself: turn engineering standards into automated guardrails.
 
 > The rules in `src/codex.ts` are examples I wrote for this project. They are not Cloudflare's real Engineering Codex.
 
-## What it does
+## Try it in 60 seconds
 
-- **Review a file.** Paste a Dockerfile, GitHub Actions workflow, Kubernetes manifest, or TypeScript / Go / shell code. A durable workflow detects the file type, picks the rules that apply, runs deterministic checks, asks the LLM to evaluate each rule, and writes a scored report. Progress streams live to the UI.
-- **Chat about the codex.** Streaming answers from Llama 3.3. The assistant's prompt includes your team, stack, active waivers and recent reviews, so answers stay relevant between sessions.
-- **Record exceptions.** Waive a failing rule with a reason. Waivers live in the agent's memory and are honored by later reviews.
+1. Open the live demo, choose **Load a sample → Dockerfile**, and click **Run review**.
+2. Watch the pipeline light up step by step. You should end at **38 / 100** with three failures: a hard-coded token, `node:latest`, and a container running as root.
+3. Click **Request a waiver** on the root finding, type a reason, and save it.
+4. Run the review again. The finding now reads **Waived** and the score jumps to **63**.
+5. Ask the chat "what waivers do we have?" It knows, and it knows your team and stack too.
+6. Refresh the page. Everything is still there.
 
-## How it maps to the assignment
+## The one rule that makes it trustworthy
 
-| Requirement | Where |
+**Evidence beats opinion.**
+
+LLMs are great at explaining a problem and unreliable at deciding whether it exists. So every rule has a deterministic check (policy-as-code) that collects hard evidence, with line numbers. The model explains and judges only the fuzzy cases. If the check finds a violation, the model cannot talk its way to a pass. A prompt injection hidden in your Dockerfile changes nothing.
+
+| Rule type | Who decides | Example |
+| --- | --- | --- |
+| Authoritative | The check alone | Unpinned `:latest`, missing `USER`, no `permissions:` block |
+| Fuzzy | Check first, then the LLM | Timeouts on outbound calls, swallowed errors, secrets in odd shapes |
+
+
+
+## What happens when you click Run review
+
+<img width="3200" height="1760" alt="architecture" src="https://github.com/user-attachments/assets/9025a02a-55b6-40aa-8774-b149a688f905" />
+
+
+
+
+- **One flaky model call doesn't sink the review.** Each rule is its own workflow step with retries and a timeout. A garbled model reply downgrades one rule to "needs review" instead of failing everything.
+- **State lives with the user.** Each browser gets a room, and each room is its own Durable Object. There are no accounts in this demo, so anyone with a room id can open that room.
+
+## Checklist
+
+| Requirement | Where it lives |
 | --- | --- |
-| LLM (Llama 3.3 on Workers AI) | `src/llm.ts` (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`), streaming for chat and one-shot for reviews |
-| Workflow / coordination | `src/workflow.ts` (Cloudflare Workflows via `AgentWorkflow`) started and observed by the agent in `src/agent.ts` |
-| User input via chat | `public/index.html`, a WebSocket chat plus a review form |
-| Memory or state | Agents SDK state (profile, waivers, active review) synced to the browser, plus SQLite tables for chat and review history, all inside one Durable Object per user room |
+| LLM (Llama 3.3 on Workers AI) | `src/llm.ts`, using `@cf/meta/llama-3.3-70b-instruct-fp8-fast`; streaming for chat, one-shot for reviews |
+| Workflow / coordination | `src/workflow.ts` (Cloudflare Workflows), started and observed by the agent in `src/agent.ts` |
+| User input via chat | `public/index.html`: a WebSocket chat plus a review form |
+| Memory or state | Agents SDK state (profile, waivers, active review) plus SQLite history, inside one Durable Object per room |
 
-## Architecture
+## Run it yourself
 
-```
-Browser (public/index.html)
-   |  WebSocket  /agents/codex-agent/<room>
-   v
-CodexAgent  (Durable Object, Agents SDK)                 src/agent.ts
-   |- state:  profile, waivers, active review   -> synced to every connected tab
-   |- SQLite: chat history, review reports      -> survives reloads and restarts
-   |- chat:   streams tokens from Workers AI
-   '- review: runWorkflow("REVIEW_WORKFLOW") ---------------------+
-                                                                  v
-ReviewWorkflow  (Cloudflare Workflows)                   src/workflow.ts
-   classify -> select rules -> policy checks -> evaluate rules (parallel, 1 step per rule) -> summarize
-      each step is checkpointed and retried on its own; progress is reported back to the agent
-```
-
-### Design choices worth knowing
-
-- **Hybrid checking.** Each rule has a deterministic check (`src/codex.ts`). "Authoritative" rules are decided by that check alone. Fuzzier rules fall back to the LLM when the check finds nothing. Hard evidence always overrides the model's opinion, and the model can never turn a real finding into a pass.
-- **Untrusted input.** The pasted code is treated as data in the prompt, and model output is parsed defensively. A malformed reply degrades one rule to "needs review" instead of failing the whole review.
-- **Durable by construction.** Each rule evaluation is its own workflow step with retries and a timeout, so one flaky model call does not redo the whole review.
-- **State lives with the user.** The room id in the browser (`localStorage`, or `?room=`) addresses that user's Durable Object. There are no accounts in this demo; anyone who knows the room id can open the room.
-
-## Run it
-
-Requirements: Node 22+, a Cloudflare account (the free plan is enough).
+You need Node 22+ and a free Cloudflare account. These are the exact commands I used, in order.
 
 ```bash
-npm install
-npx wrangler login
-npm run dev        # http://localhost:8787
+npm install                    # dependencies
+npx wrangler login             # authenticate with Cloudflare (opens your browser)
+npm run dev                    # local server at http://localhost:8787
+
+npm run typecheck              # generates binding types, then tsc
+npm test                       # unit tests for the policy-as-code checks
+npx wrangler deploy --dry-run  # bundle everything without deploying
+
+npm run deploy                 # ship it to *.workers.dev
+npx wrangler tail              # stream live production logs (Ctrl+C to stop)
 ```
 
-`wrangler dev` runs the Worker, Durable Object and Workflow locally. The Workers AI binding always talks to your Cloudflare account, so the LLM calls need `wrangler login` and count toward your Workers AI usage.
+Good to know:
 
-Deploy:
+- `npm run dev` runs the Worker, Durable Object and Workflow locally, but the Workers AI binding always calls your Cloudflare account, so LLM calls need `wrangler login` and count toward your usage.
+- `wrangler tail` only shows the **deployed** app. Start it, then use the live URL.
+- Local and live have separate data. A waiver saved on `localhost` won't exist on `workers.dev`.
+- `.github/workflows/ci.yml` runs typecheck, tests and a deploy dry run on every push. It follows the same standards the app enforces: pinned versions, least-privilege permissions, and tests before deploy.
 
-```bash
-npm run deploy
-```
+### Field notes
 
-Checks (also run in CI):
+Local dev sometimes printed `The Workers runtime canceled this request because it detected that your Worker's code had hung`. It appeared even on a fresh start with a single tab, while every feature kept working. In production, `wrangler tail` showed `Ok` on every event and no errors, so I treated it as a local dev-server quirk and moved on.
+But still Working on it ..
 
-```bash
-npm run typecheck   # generates binding types, then tsc
-npm test            # unit tests for the policy-as-code checks
-```
+## Built with AI
+
+I built this with Claude and kept the full record in `PROMPTS.md`. I tested it locally and in production, and I can walk through every file.
 
 ## Project layout
 
 ```
-src/index.ts      Worker entry: routes /agents/* to the agent
-src/agent.ts      CodexAgent: chat, memory, workflow orchestration
-src/workflow.ts   ReviewWorkflow: the durable review pipeline
-src/codex.ts      Rules, file detection, deterministic checks, scoring
-src/llm.ts        Workers AI helpers (streaming, JSON extraction)
-public/index.html Chat and review UI (no build step)
-test/             Unit tests for src/codex.ts
+src/index.ts       Worker entry: routes /agents/* to the agent
+src/agent.ts       CodexAgent: chat, memory, workflow orchestration
+src/workflow.ts    ReviewWorkflow: the durable review pipeline
+src/codex.ts       Rules, file detection, deterministic checks, scoring
+src/llm.ts         Workers AI helpers (streaming, JSON extraction)
+public/index.html  Chat and review UI (no build step)
+test/              Unit tests for src/codex.ts
 ```
 
-To try a different model, change `MODEL` in `src/llm.ts`.
+To try another model, change `MODEL` in `src/llm.ts`.
 
 ## Screenshots
 
